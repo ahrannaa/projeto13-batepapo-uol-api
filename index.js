@@ -1,13 +1,13 @@
 import express from "express";
 import cors from "cors"
 import dotenv from "dotenv"
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import joi from "joi";
 import dayjs from "dayjs";
 
 
 const participantsSchema = joi.object({
-    name: joi.string().required().min(3)
+    name: joi.string().required()
 })
 
 const messagesSchema = joi.object({
@@ -169,19 +169,57 @@ app.post("/status", async (req, res) => {
 
 })
 
+app.delete("/messages/:id", async (req, res) => {
+    const { user } = req.headers
+    const { id } = req.params;
+
+    try {
+        const message = await collectionMessages.findOne({ _id: ObjectId(id) })
+        if (message != null) {
+            if (message.from === user) {
+                await collectionMessages.deleteOne({ _id: ObjectId(id) })
+                res.send("mensagem apagada com sucesso!")
+            } else {
+                res.status(401).send("Não autorizado!")
+            }
+
+        } else {
+            res.status(404).send("Essa mensagem não existe")
+        }
+
+    } catch (err) {
+        console.log(err)
+        res.sendStatus(500)
+    }
+})
+
 const removeParticipants = () => {
     setInterval(async () => {
         if (collectionParticipants != null) {
             try {
-               const oneMinuteAgo = Date.now() - 1000;
-               const result = await collectionParticipants.deleteMany({ lastStatus: { $lt: oneMinuteAgo }})
+                const tenSecondsAgo = Date.now() - 10000;
+                const participantsToDelete = await collectionParticipants.find({ lastStatus: { $lt: tenSecondsAgo } }).toArray()
 
-               if (result.deletedCount > 0) {
-                console.log(`Deletei ${result.deletedCount} participantes`)
-               }
+                if (participantsToDelete.length > 0) {
+                    const names = participantsToDelete.map((participant) => participant.name)
+                    await collectionParticipants.deleteMany({ name: { $in: names } })
+
+                    names.forEach(async (name) => {
+                        const message = {
+                            from: name,
+                            to: 'Todos',
+                            text: 'sai da sala...',
+                            type: 'status',
+                            time: (dayjs().format('hh:mm:ss'))
+                        }
+                        await collectionMessages.insertOne(message)
+                    })
+
+                }
+
             } catch (err) {
                 console.log(err)
-           }
+            }
         }
     }, 15000)
 }
