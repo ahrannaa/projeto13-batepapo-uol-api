@@ -50,14 +50,12 @@ app.post("/participants", async (req, res) => {
     }
 
     try {
-        const participante = await collectionParticipants.findOne({ name })
-        console.log(participante)
+        const participant = await collectionParticipants.findOne({ name })
 
-        if (participante != null) {
+        if (participant != null) {
             res.status(409).send("nome do participante já existe")
             return;
         }
-
 
         const message = {
             from: req.body.name,
@@ -66,7 +64,6 @@ app.post("/participants", async (req, res) => {
             type: 'status',
             time: (dayjs().format('hh:mm:ss'))
         }
-
 
         await collectionParticipants.insertOne({ name, lastStatus: Date.now() })
         await collectionMessages.insertOne(message)
@@ -109,9 +106,9 @@ app.post("/messages", async (req, res) => {
 
     try {
 
-        const participante = await collectionParticipants.findOne({ name: message.from })
+        const participant = await collectionParticipants.findOne({ name: message.from })
 
-        if (participante == null) {
+        if (participant == null) {
             res.status(422).send("Faça o seu cadastro!")
             return;
         }
@@ -122,7 +119,6 @@ app.post("/messages", async (req, res) => {
         console.log(err)
         res.sendStatus(500)
     }
-
 })
 
 app.get("/messages", async (req, res) => {
@@ -145,14 +141,14 @@ app.post("/status", async (req, res) => {
 
     try {
 
-        const participante = await collectionParticipants.findOne({ name: user })
+        const participant = await collectionParticipants.findOne({ name: user })
 
-        if (participante == null) {
+        if (participant == null) {
             res.sendStatus(404)
             return;
         }
 
-        const filter = { name: participante.name }
+        const filter = { name: participant.name }
         const updateDoc = {
             $set: {
                 lastStatus: Date.now()
@@ -165,8 +161,6 @@ app.post("/status", async (req, res) => {
         console.log(err)
         res.sendStatus(500)
     }
-
-
 })
 
 app.delete("/messages/:id", async (req, res) => {
@@ -179,6 +173,55 @@ app.delete("/messages/:id", async (req, res) => {
             if (message.from === user) {
                 await collectionMessages.deleteOne({ _id: ObjectId(id) })
                 res.send("mensagem apagada com sucesso!")
+            } else {
+                res.status(401).send("Não autorizado!")
+            }
+        } else {
+            res.status(404).send("Essa mensagem não existe")
+        }
+
+    } catch (err) {
+        console.log(err)
+        res.sendStatus(500)
+    }
+})
+
+app.put("/messages/:id", async (req, res) => {
+    const { id } = req.params;
+    const messageToUpdate = {
+        from: req.headers.user,
+        to: req.body.to,
+        text: req.body.text,
+        type: req.body.type,
+    }
+
+    const validation = messagesSchema.validate(messageToUpdate, { abortEarly: false })
+
+    try {
+        if (validation.error) {
+            const erros = validation.error.details.map((detail) =>
+                detail.message)
+            res.status(422).send(erros)
+            return;
+        }
+
+        const participant = await collectionParticipants.findOne({ name: messageToUpdate.from })
+
+        if (participant == null) {
+            res.sendStatus(404)
+            return;
+        }
+
+        const message = await collectionMessages.findOne({ _id: ObjectId(id) })
+
+        const filter = { _id: ObjectId(id) }
+        const updateDoc = { $set: messageToUpdate };
+
+        if (message != null) {
+            if (message.from === messageToUpdate.from) {
+                await collectionMessages.updateOne(filter, updateDoc, { upsert: false })
+                res.sendStatus(200)
+
             } else {
                 res.status(401).send("Não autorizado!")
             }
@@ -214,9 +257,7 @@ const removeParticipants = () => {
                         }
                         await collectionMessages.insertOne(message)
                     })
-
                 }
-
             } catch (err) {
                 console.log(err)
             }
