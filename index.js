@@ -31,7 +31,7 @@ try {
 } catch (err) {
     console.log(err)
 }
-const db = mongoClient.db("dados"); 
+const db = mongoClient.db("dados");
 const collectionParticipants = db.collection("participants")
 const collectionMessages = db.collection("messages")
 
@@ -140,5 +140,53 @@ app.get("/messages", async (req, res) => {
 
 })
 
+app.post("/status", async (req, res) => {
+    const { user } = req.headers
 
-app.listen(5000, () => { console.log("Server running in port: 5000") })
+    try {
+
+        const participante = await collectionParticipants.findOne({ name: user })
+
+        if (participante == null) {
+            res.sendStatus(404)
+            return;
+        }
+
+        const filter = { name: participante.name }
+        const updateDoc = {
+            $set: {
+                lastStatus: Date.now()
+            },
+        };
+
+        await collectionParticipants.updateOne(filter, updateDoc, { upsert: false })
+        res.sendStatus(200)
+    } catch (err) {
+        console.log(err)
+        res.sendStatus(500)
+    }
+
+
+})
+
+const removeParticipants = () => {
+    setInterval(async () => {
+        if (collectionParticipants != null) {
+            try {
+               const oneMinuteAgo = Date.now() - 1000;
+               const result = await collectionParticipants.deleteMany({ lastStatus: { $lt: oneMinuteAgo }})
+
+               if (result.deletedCount > 0) {
+                console.log(`Deletei ${result.deletedCount} participantes`)
+               }
+            } catch (err) {
+                console.log(err)
+           }
+        }
+    }, 15000)
+}
+
+app.listen(5000, () => {
+    removeParticipants()
+    console.log("Server running in port: 5000")
+})
